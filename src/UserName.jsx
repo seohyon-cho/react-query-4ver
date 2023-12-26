@@ -1,7 +1,7 @@
 import { useUserQuery } from './hooks/useUserQuery';
 
 export default function UserName() {
-	const result = useUserQuery();
+	const result = useUserQuery(1);
 	console.log(result);
 
 	return (

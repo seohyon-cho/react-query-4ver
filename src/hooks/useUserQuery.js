@@ -1,27 +1,35 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 const fetchUser = async () => {
 	const response = await fetch(`https://jsonplaceholder.typicode.com/users`);
 	return await response.json();
 };
 
-export const useUserQuery = () => {
-	// useQuery에 첫 번째 인수로 넣는 값은 무조건 fetching함수(여기서는 fetchUser)로 전달됨.
-	// useQuery에서는 queryKey가 동일하면 같은 데이터라고 인지하기 때문에, re-fetching 처리를 하지 않음.
-
-	// cacheTime : inactive가 된 상태에서 얼마동안 데이터를 캐시에 유지시킬지에 대한 시간 정보
-	// staleTime : 서버 데이터를 fetching한 순간부터 언제까지 최신 데이터로 인지 시키면서 cacheTime을 소진시키지 않을지에 대한 시간 값
-
-	// [ 좀 더 이해하기 쉬운 버전 설명 ]
-	// cacheTime : 해당 데이터를 컴포넌트에서 활용하지 않더라도 (= inactive 상태), 얼마동안 gc(garbage collector)에 의한 데이터 삭제를 막을지에 대한 시간 값 설정
-	// staleTime : 얼마동안 re-fetching을 하지 않을지 (= 최신 데이터 취급할지) 에 대한 시간 값 설정
-	return useQuery(['users'], fetchUser, { refetchOnMount: false, refetchOnWindowFocus: false, cacheTime: 1000 * 20, staleTime: 1000 * 5 });
+// 기존
+const deleteUser = async ({ queryKey }) => {
+	const response = await fetch(`https://jsonplaceholder.typicode.com/users/${queryKey[1]}`, {
+		method: 'DELETE',
+	});
+	return await response.json();
 };
 
-/*
-  fresh : 서버데이터를 최신으로 인식하는 상태 (refetch 필요 없는 상태)
-  stale : 서버데이터를 오래된 상태로 인식하는 상태 (refetch 필요한 상태)
-  inactive : 서버데이터가 더이상 해당 컴포넌트에서 활용되지 않는 상태 
-  cacheTime : inactive 상태에서 어느 정도의 시간까지 데이터를 유지시킬지에 대한 시간 설정값 (default : 1000 * 60 * 5ms (5분))
-  staleTime : 처음 data fetching후, 얼마 뒤에 fresh -> stale 로 변경할지에 대한 시간 설정 값 (default : 0ms)
-*/
+// 데이터 목록 호출 커스텀 훅
+export const useUserQuery = () => {
+	return useQuery(['users'], fetchUser, { refetchOnMount: false, refetchOnWindowFocus: false, cacheTime: 1000 * 20, staleTime: 1000 * 0 });
+};
+
+// 인수로 순번을 받아서, 해당 순번의 데이터를 삭제하는 커스텀 훅
+export const useDeleteQuery = () => {
+	// 기존에 생성한 queryClient 인스턴스를 호출.
+	// 해당 queryClient 인스턴스에서 활용할 수 있는 prototype method인 setQueryData 라는 서버 데이터 변경 요청 값을 등록하는 함수를 가져올 수 있음.
+	const queryClient = useQueryClient();
+	// useMutation은, 첫 번째 인수로는 비동기 데이터 변경 함수, 두 번째 인수로는 옵션 설정 객체가 들어가야 함.
+	// useMutation(비동기데이터 변경함수, 옵션설정객체 {onSuccess: mutate요청이 성공적으로 수행되면 연결될 핸들러 함수})
+	// useMutation 훅이 deleteUser라는 내부 fetching 함수를 호출해서 서버 데이터를 변경 요청.
+	return useMutation(deleteUser, {
+		// 서버 데이터 변경 성공 시, 변경된 서버 데이터 값을 다시 고유의 queryKey로 등록해서 react-query가 비동기 데이터를 관리하게 함.
+		onSuccess: (args) => {
+			queryClient.setQueryData(['users', args.id], args);
+		},
+	});
+};
